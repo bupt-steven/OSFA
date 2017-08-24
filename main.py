@@ -34,7 +34,7 @@ FACTOR = 2
 K_REGULAR = int(N_TOR_PER_UNIT / FACTOR)
 
 # env parameter
-ALPHA = 300                      # reward parameter : if used
+ALPHA = 3000                      # reward parameter : if used
 CHANGE_INTERVAL = 100            # change topology every 10 * 0.1 ms = 1 ms
 DISCONNECTED_MAXINT = 9999999
 
@@ -297,18 +297,14 @@ if __name__ == '__main__':
         tf.summary.FileWriter(LOG_DIR, SESS.graph)
 
 
-    # worker_threads = []
-    worker_process = []
+    worker_threads = []
     for worker in workers:
-        # job = lambda: worker.work()
-        # t = threading.Thread(target=job)
-        t = multiprocessing.Process(target=worker.work())
+        job = lambda: worker.work()
+        t = threading.Thread(target=job)
         t.start()
-        t.join()
-        # worker_threads.append(t)
-        worker_process.append(t)
+        worker_threads.append(t)
 
-    # COORD.join(worker_threads)
+    COORD.join(worker_threads)
 
     plt.plot(np.arange(len(GLOBAL_RUNNING_R)), GLOBAL_RUNNING_R)
     plt.xlabel('step')
