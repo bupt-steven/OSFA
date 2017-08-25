@@ -123,6 +123,24 @@ def BuildDCells(n, l):
             else:
                 realMap.update(idhashmap)
     return topoBuild
+def DeBruijnGraph(degree, dim):
+    nodeNum = degree ** dim
+    topoOut = np.zeros([nodeNum, nodeNum])
+    topoHash = {}
+    # ttt = numToNdec(12,4,4)
+    for i in range(nodeNum):
+        temp = numToNdec(i, degree, dim)
+        t = "".join(temp)
+        topoHash[t] = i
+    for key, value in topoHash.items():
+        keyList = list(key)
+        for j in range(degree):
+            prefix = keyList[1:]
+            prefix.append(str(j))
+            keyData = "".join(prefix)
+            topoOut[topoHash[keyData]][value] = 1
+            topoOut[value][topoHash[keyData]] = 1
+    return topoOut
 
     # tt = BuildDCells(2,3)
     # tt = fatTreeInit(4)
