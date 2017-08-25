@@ -173,14 +173,19 @@ def intitialTcpWindow(flowNumInfo,TcpFlag,TcpWindow) :
             if j >= len(TcpWindow) :
                 TcpWindow.append(TcpWindow[j%len(TcpWindow)])
     return TcpWindow
-def step_time(change_interval ,edgeFlowInfo, flowNumInfo,edgeHashInfo, topo,TcpWindow):
+def step_time(change_interval ,edgeFlowInfo, flowNumInfo,edgeHashInfo, topo,TcpWindow, topolitteCount):
     T = change_interval
     # 下面开始主逻辑，循环
     for curtime in range(T):
         # 先将其增大，在判断是否拥塞，决定是否减半
         for i in range(len(TcpWindow)):
             if TcpWindow[i] < SSRENTSH:  # 暂时将sstrensh 值定位8
-                TcpWindow[i] *= 2
+                if TcpWindow[i] == 0 :
+                    continue;
+                elif TcpWindow[i] < 1 and TcpWindow[i] > 1 :
+                    TcpWindow[i] = 2
+                else :
+                    TcpWindow[i] *= 2
             else:
                 TcpWindow[i] += 1
         for num,numVal in edgeFlowInfo.items():
@@ -190,6 +195,13 @@ def step_time(change_interval ,edgeFlowInfo, flowNumInfo,edgeHashInfo, topo,TcpW
             topoBandWid = topo[int(topoBandWidthArr[0])][int(topoBandWidthArr[1])]
             while tranSum > BANDWIDTH :  # 暂时每条边的最大传输值为 20
                 flowArray = edgeFlowInfo[num].split(",")  # 将这条边的flowid上的所有流分割出来
+                BigFlowArray = []
+                LittFlowArray = []
+                for y in range(len(flowArray)) :
+                    if int(flowArray[y]) > topolitteCount :
+                        BigFlowArray.append(flowArray[y])
+                    else :
+                        LittFlowArray.append(flowArray[y])
                 # print(num)
                 tranSum = 0
                 for j in range(len(flowArray)):
@@ -198,10 +210,20 @@ def step_time(change_interval ,edgeFlowInfo, flowNumInfo,edgeHashInfo, topo,TcpW
                     break
                 else:
                     salt += 1
-                    decreaseFlow = ((curtime+num+j+1+salt) *  24036583) % len(flowArray)
-                    TcpWindow[int(flowArray[decreaseFlow])] /= 2
-                    # print(decreaseFlow, "你被减速了")
-            # print(tranSum,"-----",BANDWIDTH * topoBandWid, "        ",curtime)
+                    decreaseFlow = ((curtime+num+j+1+salt) *  24036583) % (len(BigFlowArray))
+                    TcpWindow[int(BigFlowArray[decreaseFlow])] /= 2
+                tranLittleSum = 0
+                for j in range (len(LittFlowArray)) :
+                    tranLittleSum += int(TcpWindow[int(LittFlowArray[j])] * SPEED)
+                    if tranLittleSum >= BANDWIDTH * 1:
+                        salt += 1
+                        decreaseFlow = ((curtime + num + j + 1 + salt) * 24036583) % (len(LittFlowArray))
+                        TcpWindow[int(LittFlowArray[decreaseFlow])] /= 2
+                    else :
+                        break
+
+
+        print(tranSum,"-----",BANDWIDTH * topoBandWid, "        ",curtime)
         # print("--------------------------------------start-------------------------------------------")
         # print(TcpWindow)
         # print("---------------------------------------end--------------------------------------------")
@@ -260,9 +282,19 @@ def demandToTask (demand) :
                 task.append(temp)
     return task
 # if __name__ == '__main__':
-#     file_path = "../../seed_3/s_demand0.txt"
-
-
+#     file_path = "../../s_demand0.txt"
+def demandHandle(demand) :
+    littleDemand = np.zeros([maxm,maxm])
+    bigDemand = np.zeros([maxm,maxm])
+    for i in range(maxm) :
+        for j in range(maxm) :
+            if demand[i][j] <1000 :
+                littleDemand[i][j] = demand[i][j]
+                bigDemand[i][j] = 0
+            else :
+                littleDemand[i][j] = 0
+                bigDemand[i][j] = demand[i][j]
+    return littleDemand,bigDemand
 
 def streamMain(timeLength,topo, demand, TcpFlag = 0) : #TcpFlag 1 从全局变量读取，0初始化为1
     #pre = Dijkstra(topoNormal, 0)
@@ -333,22 +365,36 @@ def streamMain1(timeLength,topo, demand, TcpFlag = 0) : #TcpFlag 1 从全局变�
     tm = 1
     # 默认TCP的一跳时间
 
+    #大小流分解
+    littleDemand,bigDemand = demandHandle(demand)
+    #底层拓扑
+    topoDeBrejin = util.DeBruijnGraph(4,2)
+    topoAll = topo + topoDeBrejin
     #初始化任务
-    task = demandToTask(demand)
+    taskLitte = demandToTask(littleDemand)
+    taskBig   = demandToTask(bigDemand)
 
-    shortRouter= taskToFlow1(task, topoNormal)
+    #算各自最短路
+
+    shortRouterLittle= taskToFlow1(taskLitte, topoDeBrejin)
+    shortRouterBig   = taskToFlow1(taskBig,topoNormal)
     # if (unArrivalFlag == True) :
     #     return 0,demand,demand, True
-    flowInfo = getFlowId(shortRouter)
 
-    flowNumInfo = getFlowNum(shortRouter, task)
+    flowInfo = getFlowId(shortRouterLittle)
+    littleflowCount = len(flowInfo)
+    flowNumInfo = getFlowNum(shortRouterLittle, taskLitte)
+    flowBigInfo = getFlowId(shortRouterBig)
+    flowBigNum = getFlowNum(shortRouterBig,taskBig)
+    flowInfo.extend(flowBigInfo)
+    flowNumInfo.extend(flowBigNum)
     # var_dump(len(flowNumInfo))
     edgeHashInfo = edgeHash(topoNormal)
     #var_dump(edgeHashInfo)
     edgeFlowInfo = flowToEdge(flowInfo, edgeHashInfo, flowNumInfo)
     global TcpWindow
     TcpWindow = intitialTcpWindow(flowNumInfo,TcpFlag,TcpWindow)
-    spendTime, demandRest = step_time(timeLength,edgeFlowInfo,flowNumInfo,edgeHashInfo,topo,TcpWindow) #获得时间片后的情况
+    spendTime, demandRest = step_time(timeLength,edgeFlowInfo,flowNumInfo,edgeHashInfo,topoAll,TcpWindow,littleflowCount) #获得时间片后的情况
     # print(demandRest)
     demandNext = OutPutDemand(flowInfo,demandRest)
     resultDemand = np.array(demandNext)
@@ -357,29 +403,22 @@ def streamMain1(timeLength,topo, demand, TcpFlag = 0) : #TcpFlag 1 从全局变�
     # print(TcpWindow)
     return spendTime,resultDemand,demandNP
 
-# demand = util.readfile(file_path)
+demand = util.readfile(file_path)
+topo = util.DeBruijnGraph(2,4)
 # topo = util.fatTreeInit(6)
-# hh = 45
-# # topo = util.BuildDCells(4,2)
-# topoNormal = normalTopo(topo)
-# demandnn = np.zeros([hh,hh])
-# for i in range(hh) :
-#     for j in range(hh) :
+hh = 16
+# topo = util.BuildDCells(4,2)
+topoNormal = normalTopo(topo)
+demandnn = np.zeros([hh,hh])
+for i in range(hh) :
+    for j in range(hh) :
 #         if i < 16 and j < 16:
-#             demandnn[i][j] = demand[i][j]
-#         else :
-#             demandnn[i][j] = 0
-#
-# # demand = np.zeros([maxm,maxm])
-# # for i in range(maxm) :
-# #     for j in range(maxm) :
-# #         demand[i][j] = random.randrange(1000, 1250)
-#         # demand[i][j] = 12
-# # demand[0][5] = 125
-# # spendTime, demandNext, demandCur,Flag = streamMain(8000,topo, demandnn, 0)
-# spendTime, demandNext, demandCur = streamMain1(8000,topo, demandnn, 0)
+        topoNormal[i][j] =  int(topoNormal[i][j])
+        # else :
+        demandnn[i][j] = float(demand[i][j])
+# spendTime, demandNext, demandCur,Flag = streamMain(8000,topo, demandnn, 0)
+spendTime, demandNext, demandCur = streamMain1(100000,topo, demandnn, 0)
 # print(spendTime)
 # print(demandNext)
 # print(demandCur)
-# print(Flag)
 

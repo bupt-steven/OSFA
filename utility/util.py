@@ -123,15 +123,46 @@ def BuildDCells(n, l):
             else:
                 realMap.update(idhashmap)
     return topoBuild
+def numToNdec(x , n, dim) :
+    result = []
+    while (x > 0) :
+        mod = int(x % n)
+        result.append(str(mod))
+        x = int(x/n)
+    if len(result) < dim :
+        for i in range(dim - len(result)) :
+            result.append('0')
+    result.reverse()
+    return result
+def DeBruijnGraph(degree, dim):
+    nodeNum = degree ** dim
+    topoOut = np.zeros([nodeNum, nodeNum])
+    topoHash = {}
+    # ttt = numToNdec(12,4,4)
+    for i in range(nodeNum):
+        temp = numToNdec(i, degree, dim)
+        t = "".join(temp)
+        topoHash[t] = i
+    for key, value in topoHash.items():
+        keyList = list(key)
+        for j in range(degree):
+            prefix = keyList[1:]
+            prefix.append(str(j))
+            keyData = "".join(prefix)
+            topoOut[topoHash[keyData]][value] = 1
+            topoOut[value][topoHash[keyData]] = 1
+    for i in range(nodeNum) :
+        for j in range(nodeNum) :
+            if i == j :
+                topoOut[i][j] = 0
+    return topoOut
 
-    # tt = BuildDCells(2,3)
-    # tt = fatTreeInit(4)
-    # fig = plt.figure()
-    # fig, axarr = plt.subplots(2)
-    # ax0 = fig.add_subplot(121)
-    # im0 = ax0.imshow(tt)
-    # plt.colorbar(im0, fraction=0.046, pad=0.04)
-    # plt.show()
+# tt = DeBruijnGraph(4, 3)
+# fig = plt.figure()
+# ax0 = fig.add_subplot(121)
+# im0 = ax0.imshow(tt)
+# plt.colorbar(im0, fraction=0.046, pad=0.04)
+# plt.show()
     # print(tt)
 
 # if __name__ == '__main__':
